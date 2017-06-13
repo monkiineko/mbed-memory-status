@@ -191,36 +191,28 @@ static void debug_print_pointer(const void * pointer)
 
 #if (defined (MBED_CONF_RTOS_PRESENT) && (MBED_CONF_RTOS_PRESENT != 0))
 #include "cmsis_os.h"
-
-// Temporarily #undef NULL or the compiler complains about previous def.
-#undef NULL
-#include "rt_TypeDef.h"
+#include "rtx_lib.h"
+#include <stdlib.h>
  
-// No public forward declaration for this.
-extern P_TCB rt_tid2ptcb (osThreadId thread_id);
-
 static void print_thread_info(osThreadId threadId)
 {
     if (!threadId) return;
 
-    osEvent event;
-    
-    P_TCB tcb = rt_tid2ptcb(threadId);
+    os_thread_t *tcb = (os_thread_t *)threadId;
     
     DPL("    stack ( start: ");
-    debug_print_pointer(tcb->stack);
+    debug_print_pointer(tcb->stack_mem);
     
-    event = _osThreadGetInfo(threadId, osThreadInfoStackSize);
+    uint32_t stackSize = osThreadGetStackSize(threadId);
     
     DPL(" end: ");
-    debug_print_pointer(((uint8_t *) tcb->stack + event.value.v)); // (tcb->priv_stack)));
+    debug_print_pointer(((uint8_t *) tcb->stack_mem + stackSize));
 
     DPL(" size: ");
-    debug_print_u32(event.value.v);
+    debug_print_u32(stackSize);
     
-    event = _osThreadGetInfo(threadId, osThreadInfoStackMax);
     DPL(" used: ");
-    debug_print_u32(event.value.v);
+    debug_print_u32(stackSize - osThreadGetStackSpace(threadId));
 
     
     DPL(" ) ");
@@ -228,24 +220,30 @@ static void print_thread_info(osThreadId threadId)
     DPL("thread ( id: ");
     debug_print_pointer(threadId);
     
-    event = _osThreadGetInfo(threadId, osThreadInfoEntry);
     DPL(" entry: ");
-    debug_print_pointer(event.value.p);
+    debug_print_u32(tcb->thread_addr);
 
     DPL(" )\r\n");
 }
 
 void print_all_thread_info(void)
 {
-    osThreadEnumId enumId   = _osThreadsEnumStart();
-    osThreadId     threadId = NULL;
+    uint32_t thread_n = osThreadGetCount();
+    unsigned i;
+    osThreadId_t *threads;
 
-    while ((threadId = _osThreadEnumNext(enumId)))
-    {
-        print_thread_info(threadId);
+    threads = malloc(sizeof(osThreadId_t) * thread_n);
+    MBED_ASSERT(threads != NULL);
+
+    osKernelLock();
+    thread_n = osThreadEnumerate(threads, thread_n);
+
+    for(i = 0; i < thread_n; i++) {
+        print_thread_info(threads[i]);
     }
- 
-    _osThreadEnumFree(enumId);
+    osKernelUnlock();
+
+    free(threads);
 }
 
 void print_current_thread_id(void)
