@@ -29,6 +29,7 @@
  * pulling in all the printf() code.
  */
 
+#include "mbed_boot.h"
 #include "platform/mbed_critical.h"
 #include "platform/mbed_stats.h"
 
@@ -50,14 +51,9 @@
 // Value is sprayed into all of the ISR stack at boot time.
 static const uint32_t ISR_STACK_CANARY = 0xAFFEC7ED; // AFFECTED
 
-// Refers to linker script defined symbol, may not be available
-// on all platforms.
-extern uint32_t __StackLimit;
-extern uint32_t __StackTop;
-
 void fill_isr_stack_with_canary(void)
 {
-    uint32_t * bottom = &__StackLimit;
+    uint32_t * bottom = (uint32_t *) mbed_stack_isr_start;
     uint32_t * top    = (uint32_t *) GET_SP();
 
     for (; bottom < top; bottom++)
@@ -280,16 +276,15 @@ static void print_memory_contents(const uint32_t * start, const uint32_t * end)
 }
 #endif
 
-extern uint32_t mbed_stack_isr_size;
-
 #if DEBUG_ISR_STACK_USAGE
 uint32_t calculate_isr_stack_usage(void)
 {
-    for (const uint32_t * stack = &__StackLimit; stack < &__StackTop; stack++)
+    for ( const uint32_t * stack = (uint32_t *) mbed_stack_isr_start;
+          stack < (uint32_t *) (mbed_stack_isr_start + mbed_stack_isr_size); stack++ )
     {
         if (*stack != ISR_STACK_CANARY)
         {
-            return (uint32_t) &__StackTop - (uint32_t) stack;
+            return (uint32_t) (mbed_stack_isr_start + mbed_stack_isr_size) - (uint32_t) stack;
         }
     }
     
@@ -299,11 +294,6 @@ uint32_t calculate_isr_stack_usage(void)
 
 void print_heap_and_isr_stack_info(void)
 {
-    extern unsigned char * mbed_heap_start;
-    extern uint32_t        mbed_heap_size;
-
-    extern unsigned char * mbed_stack_isr_start;
-    
     mbed_stats_heap_t      heap_stats;
     
     mbed_stats_heap_get(&heap_stats);
@@ -346,6 +336,6 @@ void print_heap_and_isr_stack_info(void)
 
 #if DEBUG_MEMORY_CONTENTS
     // Print ISR stack contents.
-    print_memory_contents(&__StackLimit, &__StackTop);
+    print_memory_contents((uint32_t *) mbed_stack_isr_start, (uint32_t *) (mbed_stack_isr_start + mbed_stack_isr_size));
 #endif
 }
